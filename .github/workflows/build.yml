@@ -1,44 +1,57 @@
-name: Build Flet APK
+name: Deploy Flet Web to GitHub Pages
 
 on:
   push:
-    branches: [ main ] # Сборка будет запускаться, когда ты обновляешь ветку main
+    branches:
+      - основной # Твоя ветка на русском языке
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
-  build:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11' # Берем стабильный Python для Flet
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17' # Java нужна для компиляции Android
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flet
+          if [ -f requirements.txt ]; then 
+            pip install -r requirements.txt
+          elif [ -f PythonProject/requirements.txt ]; then
+            pip install -r PythonProject/requirements.txt
+          fi
+          pip install flet rich
 
-      - name: Build APK
+      - name: Build Web App
         run: |
-          flet build apk scr/main.py
+          # Устанавливаем принудительный режим без вопросов (non-interactive)
+          export FLET_NON_INTERACTIVE=true
+          
+          # Запускаем сборку, явно указав имя модуля-папки
+          flet build web --module-name PythonProject.main --base-url /${{ github.event.repository.name }}/
 
-      - name: Upload APK
-        uses: actions/artifacts@v4
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: school-app-release
-          path: build/apk/*.apk
+          path: build/web
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
